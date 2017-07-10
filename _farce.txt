@@ -1,0 +1,52 @@
+Furrykef's Asinine Rust Chess Engine
+
+
+Cells
+-----
+For now we just use an enum. But in the future, we might use the following scheme.
+
+Bits of a cell:
+  ccxxxttt
+
+  * c = color
+    * 0 = empty square
+    * 1 = white piece
+    * 2 = black piece
+    * 3 = cell is out of bounds
+  * t = piece type (only relevant if color is white or black piece)
+    * 0 = pawn
+    * 1 = knight
+    * 2 = bishop
+    * 3 = rook
+    * 4 = queen
+    * 5 = king
+  * x = unused
+
+Note that color can be flipped by XORing with 0xc0. A non-pawn move can be tested for validity by ANDing the square with the player's own color code; if the result is zero, the destination square is either empty or an enemy, making it a valid destination.
+
+
+Checking if a square is attacked
+--------------------------------
+Uses:
+  * Determine if the king is currently in check (or mated)
+  * Determine if the king will be in check after a move
+  * Determine if the king will castle through check
+
+So far I can't think of a practical use that isn't related to check.
+
+Suppose white wants to know if he's in check. He iterates over the board and calculates all of black's possible moves *except* for pawn thrusts, en passant captures, and castling. Bishops on a different color square need not be considered. If any piece reaches the king's square, the king is in check.
+
+We could have a flag to search for double check, because if we're in double check then the only legal move is to move the king. This would avoid having to call this routine a zillion times because we keep trying illegal pawn, knight, etc. moves when we must move the king. On the other hand, it would also slow down searches where we're *not* in double check, and double check is pretty rare.
+
+Note that a routine like this can't be used to determine what squares the king can or can't escape to unless it ignores the king. For example, suppose black's rook mates the white king (sitting at g1) in a typical back rank mate. The rook is not attacking h1, because the king is blocking it, yet the king would still be in check if it moved to h1.
+
+
+Rust stuff
+----------
+Instead of:
+    fn some_uci_command(tokens: &mut SplitWhitespace)
+
+You can use:
+    fn some_uci_command<'a>(mut tokens: Box<Iterator<Item=&str> + 'a>)
+
+To call, you need to box the iterator, like this: let mut boxed_tokens = Box::new(tokens)
