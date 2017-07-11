@@ -50,3 +50,7 @@ You can use:
     fn some_uci_command<'a>(mut tokens: Box<Iterator<Item=&str> + 'a>)
 
 To call, you need to box the iterator, like this: let mut boxed_tokens = Box::new(tokens)
+
+Use the enum_map crate for using enums as array indexes
+
+iter.chunks(10) -- use this (with a different param, obv) when parsing FEN

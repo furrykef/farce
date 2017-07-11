@@ -1,12 +1,11 @@
+use std;
+
 use regex::Captures;
 use regex::Regex;
 
 use color::Color;
 use color::opposite_color;
 use piece::PieceType;
-
-
-const BOARD_NUM_CELLS: usize = 120;
 
 const STARTPOS_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -35,7 +34,7 @@ pub enum Cell {
     Piece(PieceType, Color)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct Position {
     cells: [[Cell; 8]; 8],
     side_to_move: Color,
@@ -99,6 +98,85 @@ impl Position {
             black_can_castle_queenside: castling.contains('q'),
             en_passant: en_passant
         }
+    }
+
+    pub fn to_fen(&self) -> String {
+        let mut fen = String::new();
+        for (row_num, row) in self.cells.iter().enumerate() {
+            let mut empty_count = 0;
+            for &cell in row.iter() {
+                if let Cell::Piece(piece_type, color) = cell {
+                    // There's a piece here
+                    if empty_count > 0 {
+                        fen.push_str(&empty_count.to_string());
+                        empty_count = 0;
+                    }
+                    fen.push(match (piece_type, color) {
+                        (PieceType::Pawn, Color::White)     => 'P',
+                        (PieceType::Pawn, Color::Black)     => 'p',
+                        (PieceType::Knight, Color::White)   => 'N',
+                        (PieceType::Knight, Color::Black)   => 'n',
+                        (PieceType::Bishop, Color::White)   => 'B',
+                        (PieceType::Bishop, Color::Black)   => 'b',
+                        (PieceType::Rook, Color::White)     => 'R',
+                        (PieceType::Rook, Color::Black)     => 'r',
+                        (PieceType::Queen, Color::White)    => 'Q',
+                        (PieceType::Queen, Color::Black)    => 'q',
+                        (PieceType::King, Color::White)     => 'K',
+                        (PieceType::King, Color::Black)     => 'k'
+                    });
+                } else {
+                    // No piece here
+                    empty_count += 1;
+                }
+            }
+            if empty_count > 0 {
+                fen.push_str(&empty_count.to_string());
+            }
+            // Only append '/' if it's not the last row, else append space
+            // TODO: fix magic number constant
+            fen.push(if row_num != self.cells.len() - 1 {
+                '/'
+            } else {
+                ' '
+            });
+        }
+        // Whose turn is it?
+        fen.push_str(match self.side_to_move {
+            Color::White => "w ",
+            Color::Black => "b "
+        });
+        // Castling rights
+        let mut castling_str = String::new();
+        if self.white_can_castle_kingside {
+            castling_str.push('K');
+        }
+        if self.white_can_castle_queenside {
+            castling_str.push('Q');
+        }
+        if self.black_can_castle_kingside {
+            castling_str.push('k');
+        }
+        if self.black_can_castle_queenside {
+            castling_str.push('q');
+        }
+        if castling_str.len() == 0 {
+            castling_str.push('-');
+        }
+        fen.push_str(&castling_str);
+        fen.push(' ');
+        // En passant
+        if let Some((row, col)) = self.en_passant {
+            fen.push_str(&to_algebraic_coords((row, col)));
+        } else {
+            fen.push_str("-");
+        }
+        fen.push(' ');
+        // Half-move clock
+        fen.push_str(&self.halfmove_clock.to_string());
+        // Turn number (we don't track it, so use 1)
+        fen.push_str(" 1");
+        fen
     }
 
     // NOTE: Does not check move's legality! It just replaces the destination square with the
@@ -210,6 +288,14 @@ impl Position {
     }
 }
 
+
+impl std::fmt::Debug for Position {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Position::from_fen(\"{}\")", self.to_fen())
+    }
+}
+
+
 fn read_board_data(captures: &Captures) -> [[Cell; 8]; 8] {
     let mut cells: [[Cell; 8]; 8] = [[Cell::Empty; 8]; 8];
     for row in 0..8 {
@@ -256,6 +342,34 @@ fn parse_algebraic_coords(coords: &str) -> (usize, usize) {
     let col = iter.next().unwrap() as usize - 'a' as usize;
     let row = 7 - (iter.next().unwrap() as usize - '1' as usize);
     (row, col)
+}
+
+fn to_algebraic_coords(coords: (usize, usize)) -> String {
+    let (row, col) = coords;
+    let mut out = String::new();
+    out.push(match col {
+        COL_A => 'a',
+        COL_B => 'b',
+        COL_C => 'c',
+        COL_D => 'd',
+        COL_E => 'e',
+        COL_F => 'f',
+        COL_G => 'g',
+        COL_H => 'h',
+        _ => panic!("Invalid coordinates: ({}, {})", row, col)
+    });
+    out.push(match row {
+        ROW_1 => '1',
+        ROW_2 => '2',
+        ROW_3 => '3',
+        ROW_4 => '4',
+        ROW_5 => '5',
+        ROW_6 => '6',
+        ROW_7 => '7',
+        ROW_8 => '8',
+        _ => panic!("Invalid coordinates: ({}, {})", row, col)
+    });
+    out
 }
 
 
@@ -355,5 +469,12 @@ mod tests {
         pos.make_move((ROW_7, COL_E), (ROW_8, COL_E), Some(PieceType::Knight)); // 1.e8=N
         assert_eq!(pos,
                    Position::from_fen("k3N3/8/8/8/8/8/8/K7 b - - 0 1"));
+    }
+
+    // TODO: tests checking for revocation of castling rights
+
+    #[test]
+    fn fen_of_start_position() {
+        assert_eq!(Position::new().to_fen(), STARTPOS_FEN);
     }
 }
